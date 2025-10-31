@@ -1,0 +1,124 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+@layer base {
+  body {
+    @apply font-bodyFont bg-white text-gray-700;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-titleFont font-bold;
+  }
+}
+
+@layer components {
+  /* Global interactive elements */
+  .hoverEffect {
+    @apply duration-300 cursor-pointer transform transition-all hover:scale-105;
+  }
+  
+  /* Header/navbar elements */
+  .headerSedenavLi {
+    @apply hover:underline underline-offset-2 cursor-pointer text-gray-300 hover:text-white transition-colors;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply bg-primeColor text-white py-2 px-4 rounded shadow hover:bg-opacity-90 transition-all duration-300 font-medium;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-800 py-2 px-4 rounded shadow hover:bg-gray-300 transition-all duration-300 font-medium;
+  }
+  
+  .btn-accent {
+    @apply bg-accent1 text-white py-2 px-4 rounded shadow hover:bg-opacity-90 transition-all duration-300 font-medium;
+  }
+
+  /* Cards */
+  .card {
+    /* glassmorphism card: translucent, subtle blur, new shadow */
+    @apply bg-white/60 backdrop-blur-sm rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(124,58,237,0.12)] hover:shadow-[0_18px_60px_rgba(124,58,237,0.12)] transition-all duration-300;
+  }
+
+  /* Badge */
+  .badge {
+    @apply absolute top-2 right-2 bg-accent1 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm;
+  }
+  
+  /* Product cards */
+  .product-card {
+    @apply card animate-fade-in p-4;
+  }
+  
+  .product-image {
+    @apply w-full h-64 object-cover rounded-xl transition-transform duration-300 hover:scale-105;
+  }
+  
+  .product-title {
+    @apply text-lg font-semibold truncate mt-3 text-primeColor;
+  }
+  
+  .product-price {
+    @apply text-lg font-bold text-primeColor mt-1;
+  }
+
+  /* New pill primary button style */
+  .btn-pill-primary {
+    @apply inline-flex items-center gap-2 bg-gradient-primary text-white px-5 py-2 rounded-full font-semibold shadow-[0_8px_30px_rgba(124,58,237,0.12)] hover:opacity-95 transition-all;
+  }
+
+  /* Floating header style for a distinct look */
+  .header-floating {
+    @apply bg-white/60 backdrop-blur-md shadow-[0_6px_18px_rgba(15,23,42,0.08)];
+  }
+}
+
+/* NavLink active styles */
+nav .active li {
+  @apply text-primeColor font-semibold border-b-2 border-primeColor;
+}
+
+@media screen and (max-width: 665px) {
+  nav .active li {
+    @apply text-white font-semibold border-b-2 border-white;
+  }
+}
+
+/* Hide scrollbar for cleaner UI */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom animations */
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+.slide-up {
+  animation: slideUp 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to { 
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Form elements */
+input, select, textarea {
+  @apply rounded border border-gray-300 focus:ring-2 focus:ring-primeColor focus:border-transparent transition-all outline-none px-3 py-2;
+}
