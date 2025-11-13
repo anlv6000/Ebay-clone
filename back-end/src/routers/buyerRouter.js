@@ -50,6 +50,8 @@ orderRoutes.post('/', orderController.createOrder);
 orderRoutes.get('/', orderController.getBuyerOrders);
 orderRoutes.get('/:id', orderController.getOrderDetails);
 orderRoutes.put('/items/:id/status', orderController.updateOrderItemStatus);
+// Send receipt email from configured sender (EMAIL_USER) to buyer's email
+orderRoutes.post('/:id/send-receipt', orderController.sendReceipt);
 buyerRouter.use('/orders', orderRoutes);
 
 // Quản lý thanh toán - requires buyer role

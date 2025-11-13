@@ -7,20 +7,21 @@ import DialogTitle from "@mui/material/DialogTitle";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
-import axios from "axios";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import { Box, Typography, Chip } from "@mui/material";
+import AdminUserService from "./AdminUserService";
 
 export default function UpdateUser({
-  targetUser,
-  onUpdated,
+  user,
   open,
-  handleClose,
+  onClose,
+  onUpdated,
 }) {
-  const [username, setUsername] = React.useState(targetUser?.username || "");
-  const [email, setEmail] = React.useState(targetUser?.email || "");
-  const [role, setRole] = React.useState(targetUser?.role || "");
-  const [action, setAction] = React.useState(targetUser?.action || "");
+  const [username, setUsername] = React.useState(user?.username || "");
+  const [role, setRole] = React.useState(user?.role || "");
+  const [action, setAction] = React.useState(user?.action || "");
+  const [loading, setLoading] = React.useState(false);
   const [snackbar, setSnackbar] = React.useState({
     open: false,
     msg: "",
@@ -28,74 +29,93 @@ export default function UpdateUser({
   });
 
   React.useEffect(() => {
-    setUsername(targetUser?.username || "");
-    setEmail(targetUser?.email || "");
-    setRole(targetUser?.role || "");
-    setAction(targetUser?.action || "");
-  }, [targetUser, open]);
+    if (user && open) {
+      setUsername(user.username || "");
+      setRole(user.role || "");
+      setAction(user.action || "");
+    }
+  }, [user, open]);
 
   const handleUpdateUser = async (e) => {
     e.preventDefault();
+
+    // Validation
+    if (!username.trim()) {
+      setSnackbar({
+        open: true,
+        msg: "Username cannot be empty",
+        severity: "warning",
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
-      const reqBody = { username, email, role, action };
-      const response = await axios.put(
-        `http://localhost:9999/api/admin/users/${targetUser._id}`,
-        reqBody,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          },
-        }
-      );
-      if (response.status === 200) {
+      const reqBody = {
+        username: username.trim(),
+        role,
+        action
+      };
+
+      const response = await AdminUserService.updateUserByAdmin(user._id, reqBody);
+
+      if (response.success) {
         setSnackbar({
           open: true,
-          msg: "Update successful!",
+          msg: "User updated successfully!",
           severity: "success",
         });
-        onUpdated(true);
+        setLoading(false);
+        setTimeout(() => {
+          if (onUpdated) onUpdated(true);
+          if (onClose) onClose();
+        }, 1500);
       }
-      handleClose();
     } catch (error) {
       console.error("Update error:", error);
       setSnackbar({
         open: true,
-        msg: error?.response?.data?.message || "An error occurred!",
+        msg: error?.message || "Error updating user!",
         severity: "error",
       });
+      setLoading(false);
     }
   };
 
   return (
     <>
-      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 22, color: "#1976d2" }}>
-          Update User
+          Edit User Information
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            To update user details, please fill out the information below and
-            submit a request:
+            Update user information. Note: Email cannot be changed.
           </DialogContentText>
-          <form onSubmit={handleUpdateUser} sx={{ mt: 0 }}>
+
+          {/* Display email (readonly) */}
+          <Box sx={{ mb: 3, p: 2, backgroundColor: "#f5f5f5", borderRadius: 1 }}>
+            <Typography variant="caption" color="textSecondary">
+              Email (Cannot be changed)
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1, fontWeight: 500 }}>
+              {user?.email}
+            </Typography>
+          </Box>
+
+          <form onSubmit={handleUpdateUser}>
             <TextField
-              label="User Name"
+              label="Username"
               variant="outlined"
               fullWidth
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               sx={{ mb: 2 }}
+              error={!username.trim() && !!username}
+              helperText={!username.trim() && !!username ? "Username cannot be empty" : ""}
             />
-            <TextField
-              label="Email"
-              variant="outlined"
-              fullWidth
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              sx={{ mb: 2 }}
-            />
+
             <TextField
               select
               label="Role"
@@ -106,40 +126,67 @@ export default function UpdateUser({
               onChange={(e) => setRole(e.target.value)}
               sx={{ mb: 2 }}
             >
-              <MenuItem value="user">User</MenuItem>
+              <MenuItem value="buyer">Buyer</MenuItem>
               <MenuItem value="seller">Seller</MenuItem>
               <MenuItem value="admin">Admin</MenuItem>
             </TextField>
+
             <TextField
               select
-              label="Action"
+              label="Status"
               variant="outlined"
               fullWidth
               value={action}
               onChange={(e) => setAction(e.target.value)}
               sx={{ mb: 2 }}
             >
-              <MenuItem value="lock">Lock</MenuItem>
-              <MenuItem value="unlock">Unlock</MenuItem>
+              <MenuItem value="unlock">
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Chip label="Unlocked" size="small" color="success" variant="outlined" />
+                </Box>
+              </MenuItem>
+              <MenuItem value="lock">
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Chip label="Locked" size="small" color="error" variant="outlined" />
+                </Box>
+              </MenuItem>
             </TextField>
-            <DialogActions sx={{ mt: 2, px: 0 }}>
-              <Button onClick={handleClose} variant="text" color="secondary">
+
+            <DialogActions sx={{ mt: 3, px: 0 }}>
+              <Button
+                onClick={onClose}
+                variant="outlined"
+                color="inherit"
+                disabled={loading}
+              >
                 Cancel
               </Button>
-              <Button type="submit" variant="contained" color="primary">
-                Save
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                disabled={loading}
+              >
+                {loading ? "Updating..." : "Save"}
               </Button>
             </DialogActions>
           </form>
         </DialogContent>
       </Dialog>
+
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={2500}
+        autoHideDuration={3000}
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
       >
-        <Alert severity={snackbar.severity}>{snackbar.msg}</Alert>
+        <Alert
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {snackbar.msg}
+        </Alert>
       </Snackbar>
     </>
   );

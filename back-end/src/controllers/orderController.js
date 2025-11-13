@@ -356,4 +356,64 @@ const updateOrderItemStatus = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getBuyerOrders, getOrderDetails, updateOrderItemStatus };
+// Send receipt email for a specific order (triggered from frontend PaymentResult)
+const sendReceipt = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const buyerId = req.user.id;
+
+    console.log(`Request to send receipt for order ${orderId} by user ${buyerId}`);
+
+    // Find order and ensure it belongs to the requesting buyer
+    const order = await Order.findOne({ _id: orderId, buyerId }).lean();
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found or unauthorized' });
+    }
+
+    // Get order items for a simple receipt body
+    const items = await OrderItem.find({ orderId }).populate('productId', 'title price').lean();
+
+    // Build a plain-text receipt
+    let receiptText = `Receipt for Order ${order._id}\n`;
+    receiptText += `Order Date: ${order.orderDate || ''}\n`;
+    receiptText += `Status: ${order.status}\n\n`;
+    receiptText += `Items:\n`;
+    items.forEach((it) => {
+      const title = it.productId?.title || 'Unknown product';
+      const qty = it.quantity || 0;
+      const unit = it.unitPrice || it.productId?.price || 0;
+      receiptText += `- ${title} x ${qty} @ ${unit} = ${qty * unit}\n`;
+    });
+    receiptText += `\nTotal: ${order.totalPrice}\n\n`;
+    receiptText += `Thank you for shopping with us!\n`;
+
+    // Fetch buyer email (order.buyerId may be an ObjectId) - try to use populated field or lookup
+    let buyerEmail = null;
+    if (order.buyerId && typeof order.buyerId === 'string') {
+      const user = await User.findById(order.buyerId).lean();
+      buyerEmail = user?.email;
+    } else if (order.buyerId && order.buyerId.email) {
+      buyerEmail = order.buyerId.email;
+    }
+
+    if (!buyerEmail) {
+      return res.status(400).json({ error: 'Buyer email not available' });
+    }
+
+    // Send email using configured EMAIL_USER as the sender (handled by sendEmail)
+    const subject = `Your receipt for Order ${order._id}`;
+    try {
+      await sendEmail(buyerEmail, subject, receiptText);
+      console.log(`Receipt email sent to ${buyerEmail} for order ${order._id}`);
+      return res.status(200).json({ success: true, message: 'Receipt sent' });
+    } catch (emailError) {
+      console.error('Failed to send receipt email:', emailError);
+      return res.status(500).json({ error: 'Failed to send receipt email' });
+    }
+  } catch (error) {
+    console.error('Error in sendReceipt:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+module.exports = { createOrder, getBuyerOrders, getOrderDetails, updateOrderItemStatus, sendReceipt };

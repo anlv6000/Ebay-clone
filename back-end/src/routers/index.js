@@ -8,6 +8,7 @@ const reviewController = require('../controllers/reviewController');
 const categoryController = require('../controllers/categoryController');
 const buyerRouter = require("./buyerRouter");
 const chatRouter = require("./chatRouter");
+const integrationRouter = require('./integrationRouter');
 const userController = require("../controllers/userController");
 const imageRoutes = require("../routes/imageRoutes");
 const { authMiddleware } = require("../middleware/auth.middleware");
@@ -31,6 +32,7 @@ router.get("/users/:id", authMiddleware, userController.getUserById);
 
 router.use("/buyers", buyerRouter);
 router.use("/chat", chatRouter);
+router.use('/integrations', integrationRouter);
 router.use("/images", authMiddleware, imageRoutes);
 router.get('/products', productController.listAllProducts);
 router.get('/categories', categoryController.listAllCategories);

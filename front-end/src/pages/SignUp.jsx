@@ -90,7 +90,7 @@ const SignUp = () => {
             {/* Username */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                Username
+                <strong>* </strong>Username
               </label>
               <input
                 id="username"
@@ -107,7 +107,7 @@ const SignUp = () => {
             {/* Fullname */}
             <div>
               <label htmlFor="fullname" className="block text-sm font-medium text-gray-700">
-                Full Name
+                 <strong>* </strong>Full Name
               </label>
               <input
                 id="fullname"
@@ -124,7 +124,7 @@ const SignUp = () => {
             {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
+                <strong>* </strong>Email
               </label>
               <input
                 id="email"
@@ -142,7 +142,7 @@ const SignUp = () => {
             {/* Password */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
+                <strong>* </strong>Password
               </label>
               <div className="mt-1 relative">
                 <input
@@ -169,7 +169,7 @@ const SignUp = () => {
             {/* Confirm Password */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                Confirm Password
+                <strong>* </strong>Confirm Password
               </label>
               <div className="mt-1 relative">
                 <input

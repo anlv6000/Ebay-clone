@@ -30,6 +30,7 @@ const PaymentResult = () => {
     orderId: '',
     message: ''
   });
+  const [receiptSent, setReceiptSent] = useState(false);
   
   // Get query parameters from URL
   const query = new URLSearchParams(location.search);
@@ -156,6 +157,46 @@ const PaymentResult = () => {
       sessionStorage.setItem(`payment_${orderId}_completed`, 'true');
     }
   }, [dispatch, locationState.orderId, queryOrderId, paymentResult.status]);
+
+  // When payment is paid, request backend to send receipt email from configured EMAIL_USER to buyer
+  useEffect(() => {
+    const sendReceipt = async () => {
+      try {
+        const orderId = paymentResult.orderId || locationState.orderId || queryOrderId;
+        if (!orderId) return;
+        if (receiptSent) return; // prevent duplicate sends
+        if (!token) {
+          console.warn('No auth token present; cannot request receipt endpoint');
+          return;
+        }
+
+        console.log('Requesting server to send receipt for order', orderId);
+        const resp = await fetch(`/api/buyers/orders/${orderId}/send-receipt`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (resp.ok) {
+          toast.success('Hóa đơn/biên nhận đã được gửi tới email của bạn.');
+          setReceiptSent(true);
+        } else {
+          const data = await resp.json().catch(() => ({}));
+          console.error('Failed to send receipt:', data);
+          toast.warn(data.error || 'Không thể gửi hóa đơn qua email ngay bây giờ.');
+        }
+      } catch (error) {
+        console.error('Error sending receipt request:', error);
+        toast.warn('Lỗi khi gửi yêu cầu email.');
+      }
+    };
+
+    if (paymentResult.status === 'paid') {
+      sendReceipt();
+    }
+  }, [paymentResult.status, paymentResult.orderId, queryOrderId, locationState.orderId, token, receiptSent]);
   
   // Show toast and start countdown after verification
   useEffect(() => {

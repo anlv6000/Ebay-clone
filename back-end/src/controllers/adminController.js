@@ -16,6 +16,8 @@ const {
   Payment,
   ReturnRequest,
   ShippingInfo,
+  Cart,
+  Conversation,
 } = require("../models");
 const { sendEmail } = require("../utils/email");
 const logger = require("../utils/logger");
@@ -99,37 +101,86 @@ exports.getUserDetails = async (req, res) => {
   }
 };
 /**
- * @desc Xóa một người dùng bởi Admin
+ * @desc Delete a user by Admin
  * @route DELETE /api/admin/users/:userId
- * @access Riêng tư (Admin)
+ * @access Private (Admin)
  */
 exports.deleteUserByAdmin = async (req, res) => {
   const { userId } = req.params;
   try {
+    // Validate userId
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid user ID" });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "Người dùng không tồn tại" });
+        .json({ success: false, message: "User not found" });
     }
+
+    // Check if user is admin
+    if (user.role === "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot delete admin account",
+      });
+    }
+
+    // If seller, delete related store
+    if (user.role === "seller") {
+      const store = await Store.findOne({ sellerId: user._id });
+      if (store) {
+        // Delete store products
+        await Product.deleteMany({ sellerId: user._id });
+
+        // Delete store
+        await Store.findByIdAndDelete(store._id);
+      }
+    }
+
+    // Delete related data (carts, addresses, etc.)
+    await Cart.deleteMany({ userId: user._id });
+    await Address.deleteMany({ userId: user._id });
+    await Message.deleteMany({
+      $or: [{ senderId: user._id }, { receiverId: user._id }],
+    });
+    await Conversation.deleteMany({
+      $or: [{ user1: user._id }, { user2: user._id }],
+    });
+
+    // Delete user
     await User.findByIdAndDelete(userId);
-    res
-      .status(200)
-      .json({ success: true, message: "Xóa người dùng thành công" });
+
+    res.status(200).json({
+      success: true,
+      message: "User deleted successfully",
+    });
   } catch (error) {
-    handleError(res, error, "Lỗi khi xóa người dùng");
+    handleError(res, error, "Error deleting user");
   }
 };
 /**
  * @desc Cập nhật chi tiết người dùng (vai trò, trạng thái khóa/mở khóa) bởi Admin
  * @route PUT /api/admin/users/:userId
  * @access Riêng tư (Admin)
+ * @body {role, action, username} - Lưu ý: email KHÔNG được phép thay đổi
  */
 exports.updateUserByAdmin = async (req, res) => {
   const { userId } = req.params;
-  const { role, action, username, email } = req.body;
+  const { role, action, username } = req.body;
 
   try {
+    // Kiểm tra userId hợp lệ
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "ID người dùng không hợp lệ" });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res
@@ -137,15 +188,33 @@ exports.updateUserByAdmin = async (req, res) => {
         .json({ success: false, message: "Người dùng không tồn tại" });
     }
 
-    const previousAction = user.action; // Lưu trạng thái trước để kiểm tra thay đổi
+    // Lưu trạng thái cũ để so sánh thay đổi
+    const previousAction = user.action;
+    const previousRole = user.role;
 
-    if (username) user.username = username;
-    if (email) user.email = email;
+    // Cập nhật username nếu có (kiểm tra tính duy nhất)
+    if (username && username !== user.username) {
+      const existingUser = await User.findOne({
+        username,
+        _id: { $ne: userId },
+      });
+      if (existingUser) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Username này đã được sử dụng" });
+      }
+      user.username = username;
+    }
+
+    // Cập nhật role nếu có
     if (role && ["buyer", "seller", "admin"].includes(role)) {
       user.role = role;
     }
+
+    // Cập nhật action (lock/unlock) nếu có
     if (action && ["lock", "unlock"].includes(action)) {
       user.action = action;
+
       // Nếu lock seller, reject store nếu tồn tại
       if (action === "lock" && user.role === "seller") {
         const store = await Store.findOne({ sellerId: user._id });
@@ -162,7 +231,7 @@ exports.updateUserByAdmin = async (req, res) => {
       }
     }
 
-    // Gửi email nếu action thay đổi
+    // Gửi email nếu action (lock/unlock) thay đổi
     if (action && action !== previousAction) {
       const emailSubject =
         action === "lock"
@@ -175,7 +244,10 @@ exports.updateUserByAdmin = async (req, res) => {
       await sendEmail(user.email, emailSubject, emailText);
     }
 
+    // Lưu người dùng
     await user.save();
+
+    // Trả về user mà không có password
     const userToReturn = user.toObject();
     delete userToReturn.password;
 
@@ -185,8 +257,8 @@ exports.updateUserByAdmin = async (req, res) => {
       data: userToReturn,
     });
   } catch (error) {
-    if (error.code === 11000 && error.keyPattern && error.keyPattern.email) {
-      return handleError(res, error, "Email đã được sử dụng.", 400);
+    if (error.code === 11000 && error.keyPattern && error.keyPattern.username) {
+      return handleError(res, error, "Username này đã được sử dụng.", 400);
     }
     handleError(res, error, "Lỗi khi cập nhật người dùng");
   }
@@ -337,13 +409,12 @@ exports.updateStoreStatusByAdmin = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Cửa hàng đã được ${
-        status === "approved"
-          ? "duyệt"
-          : status === "rejected"
+      message: `Cửa hàng đã được ${status === "approved"
+        ? "duyệt"
+        : status === "rejected"
           ? "từ chối"
           : "chuyển sang chờ duyệt"
-      } thành công`,
+        } thành công`,
       data: store,
     });
   } catch (error) {
@@ -478,14 +549,14 @@ exports.updateProductStatusAdmin = async (req, res) => {
     if (description !== undefined) product.description = description;
     if (price !== undefined) product.price = price;
     if (isAuction !== undefined) product.isAuction = isAuction;
-    
+
     // Only update status if it's provided and valid
     if (status && ["available", "out_of_stock", "pending"].includes(status)) {
       product.status = status;
     }
 
     await product.save();
-    
+
     res.status(200).json({
       success: true,
       message: "Sản phẩm đã được cập nhật thành công",

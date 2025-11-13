@@ -46,6 +46,8 @@ const Cart = () => {
   const [selectedItems, setSelectedItems] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Exchange rate used across the cart page (VND per USD)
+  const EXCHANGE_RATE = process.env.REACT_APP_VND_RATE ? Number(process.env.REACT_APP_VND_RATE) : 23500;
 
   // Fetch cart on mount and when token changes
   useEffect(() => {
@@ -241,136 +243,139 @@ const Cart = () => {
                 
                 <Divider sx={{ mb: 2 }} />
                 
-                {cartItems.map((item) => (
-                  <Fade key={item.productId?._id || Math.random()} in={true}>
-                    <Card 
-                      sx={{ 
-                        mb: 2, 
-                        display: 'flex', 
-                        position: 'relative',
-                        borderRadius: 2,
-                        overflow: 'visible',
-                        boxShadow: 'none',
-                        border: '1px solid #eee'
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', pl: 1 }}>
-                        <Checkbox
-                          checked={selectedItems.includes(item.productId._id)}
-                          onChange={() => toggleItemSelection(item.productId._id)}
-                          sx={{ color: '#0F52BA', '&.Mui-checked': { color: '#0F52BA' } }}
-                        />
-                      </Box>
-                      
-                      <Box 
-                        sx={{ 
-                          width: 100, 
-                          height: 100, 
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          p: 1
-                        }}
-                      >
-                        <CardMedia
-                          component="img"
-                          image={item.productId?.image}
-                          alt={item.productId?.name || "Product"}
-                          sx={{ 
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'contain'
-                          }}
-                        />
-                      </Box>
-                      
-                      <CardContent sx={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                        <Box>
-                          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 0.5 }}>
-                            {item.productId?.title || item.productId?.name || "Product Name"}
+                {/* Group items by seller */}
+                {(() => {
+                  const groups = {};
+                  cartItems.forEach((item) => {
+                    const sellerObj = item.productId?.seller || item.productId?.sellerId || item.productId?.store?.sellerId || { _id: 'unknown', username: 'Unknown Seller' };
+                    const sellerId = sellerObj?._id || sellerObj || 'unknown';
+                    const sellerName = (sellerObj && (sellerObj.username || sellerObj.fullname)) || (item.productId?.store && item.productId.store.name) || 'Unknown Seller';
+                    if (!groups[sellerId]) groups[sellerId] = { sellerName, items: [] };
+                    groups[sellerId].items.push(item);
+                  });
+
+                  return Object.keys(groups).map((sellerId) => {
+                    const group = groups[sellerId];
+                    return (
+                      <Box key={sellerId} sx={{ mb: 3 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                          <Typography variant="h6" fontWeight={700}>
+                            <Link to="#" style={{ textDecoration: 'none', color: '#0F52BA' }}>{group.sellerName}</Link>
                           </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            Unit Price: ${item.productId?.price?.toFixed(2) || "0.00"}
-                          </Typography>
-                          
-                          {item.productId.inventoryQuantity !== undefined && (
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                              Available: {item.productId.inventoryQuantity} in stock
-                            </Typography>
-                          )}
+                          <Link to="#" style={{ textDecoration: 'none', color: '#555' }}>Pay only this seller</Link>
                         </Box>
-                        
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <IconButton 
-                              size="small" 
-                              onClick={() => item.quantity > 1 && handleUpdateQuantity(item.productId._id, item.quantity - 1)}
-                              disabled={item.quantity <= 1}
+
+                        {group.items.map((item) => (
+                          <Fade key={item.productId?._id || Math.random()} in={true}>
+                            <Card 
                               sx={{ 
-                                border: '1px solid #e0e0e0',
-                                borderRadius: '4px 0 0 4px',
-                                p: 0.5
+                                mb: 2, 
+                                display: 'flex', 
+                                position: 'relative',
+                                borderRadius: 2,
+                                overflow: 'visible',
+                                boxShadow: 'none',
+                                border: '1px solid #eee'
                               }}
                             >
-                              <RemoveIcon fontSize="small" />
-                            </IconButton>
-                            
-                            <Box 
-                              sx={{ 
-                                px: 2, 
-                                py: 0.5, 
-                                minWidth: 40, 
-                                textAlign: 'center',
-                                border: '1px solid #e0e0e0',
-                                borderLeft: 0,
-                                borderRight: 0
-                              }}
-                            >
-                              {item.quantity}
-                            </Box>
-                            
-                            <IconButton 
-                              size="small" 
-                              onClick={() => handleUpdateQuantity(item.productId._id, item.quantity + 1)}
-                              disabled={item.quantity >= (item.productId.inventoryQuantity || 0)}
-                              sx={{ 
-                                border: '1px solid #e0e0e0',
-                                borderRadius: '0 4px 4px 0',
-                                p: 0.5,
-                                '&.Mui-disabled': {
-                                  backgroundColor: '#f5f5f5',
-                                  color: 'rgba(0, 0, 0, 0.26)'
-                                }
-                              }}
-                              title={item.quantity >= (item.productId.inventoryQuantity || 0) ? 
-                                "Maximum available quantity reached" : ""}
-                            >
-                              <AddIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                          
-                          <Typography variant="subtitle1" fontWeight={600} color="#0F52BA">
-                            ${(item.quantity * (item.productId?.price || 0)).toFixed(2)}
-                          </Typography>
-                        </Box>
-                      </CardContent>
-                      
-                      <IconButton 
-                        size="small" 
-                        onClick={() => handleRemoveItem(item.productId._id)}
-                        sx={{ 
-                          position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          color: '#d32f2f'
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Card>
-                  </Fade>
-                ))}
+                              <Box sx={{ display: 'flex', alignItems: 'center', pl: 1 }}>
+                                <Checkbox
+                                  checked={selectedItems.includes(item.productId._id)}
+                                  onChange={() => toggleItemSelection(item.productId._id)}
+                                  sx={{ color: '#0F52BA', '&.Mui-checked': { color: '#0F52BA' } }}
+                                />
+                              </Box>
+
+                              <Box 
+                                sx={{ 
+                                  width: 100, 
+                                  height: 100, 
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  p: 1
+                                }}
+                              >
+                                <CardMedia
+                                  component="img"
+                                  image={item.productId?.image}
+                                  alt={item.productId?.name || "Product"}
+                                  sx={{ 
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'contain'
+                                  }}
+                                />
+                              </Box>
+
+                              <CardContent sx={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <Box sx={{ width: '100%' }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    {/* Middle: title, condition */}
+                                    <Box sx={{ pr: 2, flex: 1 }}>
+                                      {item.productId?.otherCartsCount ? (
+                                        <Box sx={{ display: 'inline-block', mb: 0.5 }}>
+                                          <Box sx={{ display: 'inline-block', border: '1px solid #1e88e5', color: '#1e88e5', px: 1, py: 0.25, borderRadius: 99, fontSize: 12, fontWeight: 700 }}>
+                                            IN {item.productId.otherCartsCount} OTHER CARTS
+                                          </Box>
+                                        </Box>
+                                      ) : null}
+
+                                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>
+                                        <Link to={`/product/${item.productId?._id}`} style={{ textDecoration: 'underline', color: '#0F52BA' }}>
+                                          {item.productId?.title || item.productId?.name || "Product Name"}
+                                        </Link>
+                                      </Typography>
+
+                                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                        {item.productId?.condition || 'New'}
+                                      </Typography>
+                                    </Box>
+
+                                    {/* Right: qty + price side-by-side */}
+                                    <Box sx={{ width: 260, textAlign: 'right', flexShrink: 0 }}>
+                                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 3, mb: 1 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                          <Typography variant="body2" sx={{ mr: 1 }}>Qty</Typography>
+                                          <Box component="select" value={item.quantity} onChange={(e) => handleUpdateQuantity(item.productId._id, Number(e.target.value))} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', background: '#fff' }}>
+                                            {Array.from({ length: Math.max(10, (item.productId?.inventoryQuantity || 10)) }).slice(0, 10).map((_, i) => (
+                                              <option key={i} value={i + 1}>{i + 1}</option>
+                                            ))}
+                                          </Box>
+                                        </Box>
+
+                                        <Box sx={{ textAlign: 'right' }}>
+                                          <Typography variant="h6" fontWeight={700} sx={{ color: '#000' }}>
+                                            US ${((item.productId?.price || 0) * item.quantity).toFixed(2)}
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary">({new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Math.round((item.productId?.price || 0) * item.quantity * EXCHANGE_RATE))} VND)</Typography>
+                                        </Box>
+                                      </Box>
+
+                                      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                        {item.productId?.shippingMethod || 'eBay SpeedPAK'} {item.productId?.shippingSpeed || 'Economy'}
+                                      </Typography>
+
+                                      <Typography variant="body2" sx={{ color: 'green', fontWeight: 700, mt: 1 }}>Free shipping</Typography>
+                                      <Typography variant="caption" color="text.secondary">Returns accepted</Typography>
+                                    </Box>
+                                  </Box>
+
+                                  {/* Actions row placed at bottom of card content */}
+                                  <Box sx={{ mt: 2, textAlign: 'right' }}>
+                                    <Link to="#" onClick={() => toast.info('Buy it now - flow not implemented')} style={{ marginRight: 16 }}>Buy it now</Link>
+                                    <Link to="#" onClick={() => toast.info('Save for later - flow not implemented')} style={{ marginRight: 16 }}>Save for later</Link>
+                                    <Link to="#" onClick={() => handleRemoveItem(item.productId._id)} style={{ color: '#d32f2f' }}>Remove</Link>
+                                  </Box>
+                                </Box>
+                              </CardContent>
+                            </Card>
+                          </Fade>
+                        ))}
+                      </Box>
+                    );
+                  });
+                })()}
                 
                 {selectedItems.length > 0 && (
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
@@ -399,66 +404,67 @@ const Cart = () => {
                   boxShadow: '0 10px 30px rgba(0,0,0,0.05)'
                 }}
               >
-                <Typography variant="h5" fontWeight={600} mb={3}>
-                  Order Summary
-                </Typography>
-                
-                <Divider sx={{ mb: 3 }} />
-                
+                <Divider sx={{ mb: 2 }} />
+
+                {/* Simple VND conversion + shipping calc for display */}
                 <Box sx={{ mb: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body1">Selected Items:</Typography>
-                    <Typography variant="body1">{selectedItems.length}</Typography>
-                  </Box>
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body1">Subtotal:</Typography>
-                    <Typography variant="body1">${totalAmt.toFixed(2)}</Typography>
-                  </Box>
-                  
-                  <Divider sx={{ my: 2 }} />
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="h6" fontWeight={600}>Total:</Typography>
-                    <Typography variant="h6" fontWeight={700} color="#0F52BA">
-                      ${totalAmt.toFixed(2)}
-                    </Typography>
-                  </Box>
+                  {(() => {
+                    const EXCHANGE_RATE = process.env.REACT_APP_VND_RATE ? Number(process.env.REACT_APP_VND_RATE) : 23500; // VND per USD
+                    const itemsCount = cartItems.length;
+                    const subtotalVND = Math.round(totalAmt * EXCHANGE_RATE);
+                    const shippingPerItem = 9406.5; // chosen to match sample (2 items -> 18813)
+                    const shippingFee = Math.round(itemsCount * shippingPerItem);
+                    const totalVND = subtotalVND + shippingFee;
+                    const formatVND = (val) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) + ' VND';
+                    const postal = '440000';
+
+                    return (
+                      <>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                          <Typography variant="body1">Items ({itemsCount})</Typography>
+                          <Typography variant="body1">{formatVND(subtotalVND)}</Typography>
+                        </Box>
+
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, alignItems: 'center' }}>
+                          <Box>
+                            <Typography variant="body2">Shipping to {postal} </Typography>
+                            <Typography variant="caption" color="text.secondary">Delivery estimate & fees</Typography>
+                          </Box>
+                          <Typography variant="body1">{formatVND(shippingFee)}</Typography>
+                        </Box>
+
+                        <Divider sx={{ my: 2 }} />
+
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="h6" fontWeight={600}>Subtotal</Typography>
+                          <Typography variant="h6" fontWeight={700} sx={{ fontSize: '1.25rem' }}>{formatVND(totalVND)}</Typography>
+                        </Box>
+                      </>
+                    );
+                  })()}
                 </Box>
-                
+
                 <Button
                   variant="contained"
                   fullWidth
                   size="large"
-                  endIcon={<ArrowForwardIcon />}
                   onClick={handleProceedToCheckout}
                   disabled={selectedItems.length === 0}
                   sx={{ 
-                    py: 1.5,
-                    backgroundColor: '#0F52BA',
-                    '&:hover': {
-                      backgroundColor: '#0A3C8A',
-                    },
-                    fontWeight: 600
+                    py: 1.8,
+                    backgroundColor: '#0f62ff',
+                    borderRadius: '999px',
+                    boxShadow: '0 8px 24px rgba(15,98,255,0.18)',
+                    '&:hover': { backgroundColor: '#0b4ed6' },
+                    fontWeight: 700,
+                    fontSize: '1rem'
                   }}
                 >
-                  Proceed to Checkout
+                  Go to checkout
                 </Button>
-                
-                <Box sx={{ mt: 3, textAlign: 'center' }}>
-                  <Link to="/" style={{ textDecoration: 'none' }}>
-                    <Button
-                      startIcon={<ShoppingBagIcon />}
-                      sx={{ 
-                        color: '#0F52BA',
-                        '&:hover': {
-                          backgroundColor: 'rgba(15, 82, 186, 0.04)',
-                        }
-                      }}
-                    >
-                      Continue Shopping
-                    </Button>
-                  </Link>
+
+                <Box sx={{ mt: 2, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Purchase protected by <Link to="#">eBay Money Back Guarantee</Link></Typography>
                 </Box>
               </Paper>
             </Grid>

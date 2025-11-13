@@ -18,44 +18,40 @@ export const fetchCart = createAsyncThunk(
       
       const cartItems = response.data.items;
       
-      // Fetch inventory data for each product in the cart
+      // Fetch inventory and product detail (including seller/store) for each product in the cart
       const itemsWithInventory = await Promise.all(
         cartItems.map(async (item) => {
           try {
-            const inventoryResponse = await axios.get(`${API_URL}/products/${item.productId._id}/detail`, {
+            const detailResponse = await axios.get(`${API_URL}/products/${item.productId._id}/detail`, {
               headers: { Authorization: `Bearer ${token}` },
             });
-            
+
+            const data = detailResponse.data?.data || {};
+
             // Add inventory quantity to productId object
-            item.productId.inventoryQuantity = inventoryResponse.data.data.inventory?.quantity || 0;
+            item.productId.inventoryQuantity = data.inventory?.quantity || 0;
+
+            // Attach seller and store info from product detail (makes grouping by seller possible on frontend)
+            item.productId.seller = data.product?.sellerId || null;
+            item.productId.store = data.store || null;
+
             return item;
           } catch (error) {
-            console.error(`Failed to fetch inventory for product ${item.productId._id}:`, error);
+            console.error(`Failed to fetch detail for product ${item.productId._id}:`, error);
             item.productId.inventoryQuantity = 0;
+            item.productId.seller = null;
+            item.productId.store = null;
             return item;
           }
         })
       );
-      
+
       return itemsWithInventory;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch cart');
     }
   }
 );
-
-// Helper function to get product inventory
-const getProductInventory = async (productId, token) => {
-  try {
-    const response = await axios.get(`${API_URL}/products/${productId}/detail`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return response.data.data.inventory?.quantity || 0;
-  } catch (error) {
-    console.error('Failed to fetch inventory:', error);
-    return 0;
-  }
-};
 
 export const updateCartItem = createAsyncThunk(
   'cart/updateCartItem',
@@ -65,16 +61,6 @@ export const updateCartItem = createAsyncThunk(
       if (!token) {
         return rejectWithValue('No token found');
       }
-      
-      // Check inventory before updating
-      const inventoryQuantity = await getProductInventory(productId, token);
-      
-      // Validate against inventory
-      if (quantity > inventoryQuantity) {
-        toast.warning(`Cannot add more than ${inventoryQuantity} items (available in stock)`);
-        return rejectWithValue(`Maximum quantity available: ${inventoryQuantity}`);
-      }
-      
       await axios.put(
         `${API_URL}/buyers/cart/update/${productId}`,
         { quantity },

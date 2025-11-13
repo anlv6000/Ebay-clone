@@ -6,10 +6,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Pagination from "@mui/material/Pagination";
 import Stack from "@mui/material/Stack";
-import { useNavigate } from "react-router-dom";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import Tooltip from "@mui/material/Tooltip";
 import {
   Alert,
   Box,
@@ -37,15 +35,15 @@ import {
   Card,
   CardContent,
   Divider,
-  useTheme,
   Menu,
   MenuItem,
   ListItemIcon,
   ListItemText,
   Badge,
+  CircularProgress,
 } from "@mui/material";
-import axios from "axios";
 import UpdateUser from "./UpdateUser";
+import AdminUserService from "./AdminUserService";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import ClearAllIcon from "@mui/icons-material/ClearAll";
 import SearchIcon from "@mui/icons-material/Search";
@@ -55,16 +53,15 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import LockPersonIcon from "@mui/icons-material/LockPerson";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
-import BlockIcon from "@mui/icons-material/Block";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import Title from "../Title";
 
-  // Component to display user status
+// Component to display user status
 const UserStatusChip = ({ status }) => {
   let color = "default";
   let label = status || "Unknown";
-  
-  switch(status) {
+
+  switch (status) {
     case "active":
       color = "success";
       break;
@@ -80,14 +77,14 @@ const UserStatusChip = ({ status }) => {
     default:
       color = "default";
   }
-  
+
   return (
-    <Chip 
-      label={label} 
-      color={color} 
-      size="small" 
+    <Chip
+      label={label}
+      color={color}
+      size="small"
       variant="outlined"
-      sx={{ fontWeight: 500, textTransform: 'capitalize' }} 
+      sx={{ fontWeight: 500, textTransform: "capitalize" }}
     />
   );
 };
@@ -105,10 +102,11 @@ const RoleIcon = ({ role }) => {
 };
 
 export default function Users({ users: initialUsers, onUserUpdated }) {
-  const navigate = useNavigate();
-  const theme = useTheme();
   const [deletingUser, setDeletingUser] = React.useState(null);
   const [editingUser, setEditingUser] = React.useState(null);
+  const [viewingUser, setViewingUser] = React.useState(null);
+  const [lockingUser, setLockingUser] = React.useState(null);
+  const [loadingAction, setLoadingAction] = React.useState(null);
   const [snackbar, setSnackbar] = React.useState({
     open: false,
     msg: "",
@@ -118,48 +116,72 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
   const [selectedRoles, setSelectedRoles] = React.useState([]);
   const [actionFilter, setActionFilter] = React.useState("all");
   const [currentPage, setCurrentPage] = React.useState(1);
-  
+
   // For actions menu
   const [actionMenuAnchor, setActionMenuAnchor] = React.useState(null);
   const [selectedUser, setSelectedUser] = React.useState(null);
 
+  const showSnackbar = (msg, severity = "success") => {
+    setSnackbar({
+      open: true,
+      msg,
+      severity,
+    });
+  };
+
   const handleDeleteUser = async () => {
     if (!deletingUser) return;
 
+    setLoadingAction("delete");
     try {
-      const response = await axios.delete(
-        `http://localhost:9999/api/admin/users/${deletingUser._id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${
-              localStorage.getItem("accessToken") || ""
-            }`,
-          },
-          params: { skipAuth: true }, // Chỉ dùng nếu backend xử lý skipAuth
-        }
-      );
+      const response = await AdminUserService.deleteUserByAdmin(deletingUser._id);
 
-      if (response.status === 200) {
-        setSnackbar({
-          open: true,
-          msg: "User deleted successfully!",
-          severity: "success",
-        });
+      if (response.success) {
+        showSnackbar("User deleted successfully!", "success");
         setDeletingUser(null);
-        onUserUpdated(currentPage); // Reload current page
-      } else {
-        throw new Error("Unexpected response status");
+        onUserUpdated(currentPage);
       }
     } catch (error) {
-      console.error("Delete error:", error.response || error);
-      setSnackbar({
-        open: true,
-        msg: `Error deleting user! ${
-          error.response?.data?.message || error.message
-        }`,
-        severity: "error",
-      });
-      setDeletingUser(null);
+      console.error("Delete error:", error);
+      showSnackbar(
+        error?.message || "Error deleting user!",
+        "error"
+      );
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleLockUser = async () => {
+    if (!lockingUser) return;
+
+    const isCurrentlyLocked = lockingUser.action === "lock";
+    const actionType = isCurrentlyLocked ? "unlock" : "lock";
+
+    setLoadingAction(`${actionType}-user`);
+    try {
+      const response =
+        actionType === "lock"
+          ? await AdminUserService.lockUserAccount(lockingUser._id)
+          : await AdminUserService.unlockUserAccount(lockingUser._id);
+
+      if (response.success) {
+        const message =
+          actionType === "lock"
+            ? "User account locked successfully!"
+            : "User account unlocked successfully!";
+        showSnackbar(message, "success");
+        setLockingUser(null);
+        onUserUpdated(currentPage);
+      }
+    } catch (error) {
+      console.error("Lock/Unlock error:", error);
+      showSnackbar(
+        error?.message || "Error performing action!",
+        "error"
+      );
+    } finally {
+      setLoadingAction(null);
     }
   };
 
@@ -221,39 +243,46 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
   const handlePageChange = (event, newPage) => {
     setCurrentPage(newPage);
   };
-  
+
   // Action menu handlers
   const handleOpenActionMenu = (event, user) => {
     setActionMenuAnchor(event.currentTarget);
     setSelectedUser(user);
   };
-  
+
   const handleCloseActionMenu = () => {
     setActionMenuAnchor(null);
   };
-  
+
   const handleUserAction = (action) => {
-    if (action === 'edit' && selectedUser) {
+    if (action === "edit" && selectedUser) {
       setEditingUser(selectedUser);
-    } else if (action === 'delete' && selectedUser) {
+    } else if (action === "view" && selectedUser) {
+      setViewingUser(selectedUser);
+    } else if (action === "delete" && selectedUser) {
       setDeletingUser(selectedUser);
+    } else if (action === "lock" && selectedUser) {
+      setLockingUser(selectedUser);
+    } else if (action === "unlock" && selectedUser) {
+      setLockingUser(selectedUser);
     }
     handleCloseActionMenu();
   };
 
   return (
     <React.Fragment>
+      {/* Dialog: Confirm Delete */}
       <Dialog
         open={Boolean(deletingUser)}
         onClose={() => setDeletingUser(null)}
         PaperProps={{
-          sx: { borderRadius: 2 }
+          sx: { borderRadius: 2 },
         }}
       >
         <DialogTitle>
           <Box display="flex" alignItems="center">
             <DeleteIcon color="error" sx={{ mr: 1 }} />
-            Confirm User Deletion
+            Confirm Delete User
           </Box>
         </DialogTitle>
         <DialogContent>
@@ -264,51 +293,205 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeletingUser(null)} color="inherit">
+          <Button
+            onClick={() => setDeletingUser(null)}
+            color="inherit"
+            disabled={loadingAction === "delete"}
+          >
             Cancel
           </Button>
-          <Button onClick={handleDeleteUser} color="error" variant="contained">
+          <Button
+            onClick={handleDeleteUser}
+            color="error"
+            variant="contained"
+            disabled={loadingAction === "delete"}
+          >
+            {loadingAction === "delete" ? (
+              <CircularProgress size={20} sx={{ mr: 1 }} />
+            ) : null}
             Delete
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Dialog: Confirm Lock/Unlock */}
+      <Dialog
+        open={Boolean(lockingUser)}
+        onClose={() => setLockingUser(null)}
+        PaperProps={{
+          sx: { borderRadius: 2 },
+        }}
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center">
+            {lockingUser?.action === "lock" ? (
+              <LockOpenIcon color="success" sx={{ mr: 1 }} />
+            ) : (
+              <LockPersonIcon color="warning" sx={{ mr: 1 }} />
+            )}
+            {lockingUser?.action === "lock"
+              ? "Unlock Account"
+              : "Lock Account"}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {lockingUser?.action === "lock"
+              ? `Are you sure you want to unlock the account of ${lockingUser?.username || lockingUser?.email
+              }?`
+              : `Are you sure you want to lock the account of ${lockingUser?.username || lockingUser?.email
+              }?`}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setLockingUser(null)}
+            color="inherit"
+            disabled={loadingAction?.includes("user")}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleLockUser}
+            color={lockingUser?.action === "lock" ? "success" : "warning"}
+            variant="contained"
+            disabled={loadingAction?.includes("user")}
+          >
+            {loadingAction?.includes("user") ? (
+              <CircularProgress size={20} sx={{ mr: 1 }} />
+            ) : null}
+            {lockingUser?.action === "lock" ? "Unlock" : "Lock"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog: View User Details */}
+      <Dialog
+        open={Boolean(viewingUser)}
+        onClose={() => setViewingUser(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 22, color: "#1976d2" }}>
+          User Details
+        </DialogTitle>
+        <DialogContent>
+          {viewingUser && (
+            <Box sx={{ mt: 2 }}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="textSecondary">
+                  Username
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                  {viewingUser.username}
+                </Typography>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="textSecondary">
+                  Email
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                  {viewingUser.email}
+                </Typography>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="textSecondary">
+                  Role
+                </Typography>
+                <Box sx={{ mt: 0.5, display: "flex", alignItems: "center", gap: 1 }}>
+                  <RoleIcon role={viewingUser.role} />
+                  <Chip
+                    label={
+                      viewingUser.role === "buyer"
+                        ? "Buyer"
+                        : viewingUser.role === "seller"
+                          ? "Seller"
+                          : "Admin"
+                    }
+                    size="small"
+                  />
+                </Box>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="textSecondary">
+                  Status
+                </Typography>
+                <Box sx={{ mt: 0.5 }}>
+                  <UserStatusChip status={viewingUser.action} />
+                </Box>
+              </Box>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="textSecondary">
+                  Created Date
+                </Typography>
+                <Typography variant="body2">
+                  {viewingUser.createdAt
+                    ? new Date(viewingUser.createdAt).toLocaleDateString("en-US")
+                    : "N/A"}
+                </Typography>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="textSecondary">
+                  Last Updated
+                </Typography>
+                <Typography variant="body2">
+                  {viewingUser.updatedAt
+                    ? new Date(viewingUser.updatedAt).toLocaleDateString("en-US")
+                    : "N/A"}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setViewingUser(null)}
+            color="primary"
+            variant="contained"
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={2500}
+        autoHideDuration={3000}
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
       >
-        <Alert 
+        <Alert
           severity={snackbar.severity}
           variant="filled"
-          sx={{ width: '100%' }}
+          sx={{ width: "100%" }}
         >
           {snackbar.msg}
         </Alert>
       </Snackbar>
-      
+
+      {/* UpdateUser Dialog */}
       {editingUser && (
         <UpdateUser
           user={editingUser}
           open={Boolean(editingUser)}
           onClose={() => setEditingUser(null)}
           onUpdated={(success) => {
-            setEditingUser(null);
             if (success) {
-                    setSnackbar({
-        open: true,
-        msg: "User updated successfully!",
-        severity: "success",
-      });
               onUserUpdated(currentPage);
             }
           }}
         />
-      )}
-
-      <Box mb={4}>
+      )}      <Box mb={4}>
         <Title highlight={true}>User Management</Title>
-        
+
         <Box mb={3}>
           <Typography variant="body2" color="text.secondary">
             Manage all users in the system, including admins, sellers, and buyers.
@@ -326,18 +509,18 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
             }}
           >
             <CardContent>
-              <Typography 
-                variant="subtitle1" 
-                fontWeight="bold" 
+              <Typography
+                variant="subtitle1"
+                fontWeight="bold"
                 color="primary"
                 sx={{ mb: 2, display: 'flex', alignItems: 'center' }}
               >
                 <FilterAltIcon sx={{ mr: 1 }} fontSize="small" />
                 Filters
               </Typography>
-              
+
               <Divider sx={{ mb: 2 }} />
-              
+
               <Box sx={{ mb: 3 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
                   Search
@@ -358,7 +541,7 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
                   sx={{ mb: 2 }}
                 />
               </Box>
-              
+
               <Box sx={{ mb: 3 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
                   Role
@@ -387,7 +570,7 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
                   ))}
                 </FormGroup>
               </Box>
-              
+
               <Box sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
                   Status
@@ -423,7 +606,7 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
                   />
                 </RadioGroup>
               </Box>
-              
+
               <Button
                 startIcon={<ClearAllIcon />}
                 variant="outlined"
@@ -439,7 +622,7 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
               </Button>
             </CardContent>
           </Card>
-          
+
           <Card elevation={0} sx={{ borderRadius: 2 }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
@@ -447,15 +630,15 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
                   Statistics
                 </Typography>
               </Box>
-              
+
               <Divider sx={{ mb: 2 }} />
-              
+
               <Stack spacing={1}>
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2" color="text.secondary">Total Users:</Typography>
                   <Typography variant="body2" fontWeight="bold">{initialUsers.length}</Typography>
                 </Box>
-                
+
                 {roles.map(role => {
                   const count = initialUsers.filter(u => u.role === role).length;
                   return (
@@ -467,7 +650,7 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
                     </Box>
                   );
                 })}
-                
+
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2" color="text.secondary">Locked:</Typography>
                   <Typography variant="body2" fontWeight="bold" color="error.main">
@@ -478,14 +661,14 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} md={9}>
           <Card elevation={0} sx={{ borderRadius: 2 }}>
             <CardContent>
               <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle1" fontWeight="bold">
-                  <Badge 
-                    badgeContent={filteredUsers.length} 
+                  <Badge
+                    badgeContent={filteredUsers.length}
                     color="primary"
                     sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '18px', minWidth: '18px' } }}
                   >
@@ -519,8 +702,8 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: "flex", alignItems: "center" }}>
-                              <Avatar 
-                                src={user.avatarURL} 
+                              <Avatar
+                                src={user.avatarURL}
                                 alt={user.username || user.email}
                                 sx={{ width: 36, height: 36, mr: 1.5 }}
                               />
@@ -568,7 +751,7 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
                   </TableBody>
                 </Table>
               </TableContainer>
-              
+
               <Box display="flex" justifyContent="center">
                 <Pagination
                   count={totalFilteredPages}
@@ -583,45 +766,49 @@ export default function Users({ users: initialUsers, onUserUpdated }) {
           </Card>
         </Grid>
       </Grid>
-      
+
       {/* Actions menu */}
       <Menu
         anchorEl={actionMenuAnchor}
         open={Boolean(actionMenuAnchor)}
         onClose={handleCloseActionMenu}
         PaperProps={{
-          sx: { minWidth: 180, boxShadow: '0px 2px 10px rgba(0,0,0,0.1)', borderRadius: 2 }
+          sx: {
+            minWidth: 200,
+            boxShadow: "0px 2px 10px rgba(0,0,0,0.1)",
+            borderRadius: 2,
+          },
         }}
       >
-        <MenuItem onClick={() => handleUserAction('edit')}>
+        <MenuItem onClick={() => handleUserAction("edit")}>
           <ListItemIcon>
             <EditIcon fontSize="small" color="primary" />
           </ListItemIcon>
           <ListItemText>Edit</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => handleUserAction('view')}>
+        <MenuItem onClick={() => handleUserAction("view")}>
           <ListItemIcon>
             <VisibilityIcon fontSize="small" color="info" />
           </ListItemIcon>
           <ListItemText>View Details</ListItemText>
         </MenuItem>
         <Divider />
-        <MenuItem onClick={() => handleUserAction('delete')}>
+        <MenuItem onClick={() => handleUserAction("delete")}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" color="error" />
           </ListItemIcon>
           <ListItemText>Delete User</ListItemText>
         </MenuItem>
-        {selectedUser?.action === 'unlock' && (
-          <MenuItem onClick={() => handleUserAction('lock')}>
+        {selectedUser?.action === "unlock" && (
+          <MenuItem onClick={() => handleUserAction("lock")}>
             <ListItemIcon>
               <LockPersonIcon fontSize="small" color="warning" />
             </ListItemIcon>
             <ListItemText>Lock Account</ListItemText>
           </MenuItem>
         )}
-        {selectedUser?.action === 'lock' && (
-          <MenuItem onClick={() => handleUserAction('unlock')}>
+        {selectedUser?.action === "lock" && (
+          <MenuItem onClick={() => handleUserAction("unlock")}>
             <ListItemIcon>
               <LockOpenIcon fontSize="small" color="success" />
             </ListItemIcon>
